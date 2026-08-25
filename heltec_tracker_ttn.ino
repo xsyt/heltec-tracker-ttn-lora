@@ -43,6 +43,7 @@ static uint32_t movement_count = 0;
 static bool movement_detected = false;
 static unsigned long last_movement_time = 0;
 static bool network_joined = false;
+static bool lmic_initialized = false;
 const unsigned long DEBOUNCE_TIME = 100; // 100ms debounce
 
 // TX Interval in seconds
@@ -65,22 +66,41 @@ void setup() {
     Serial.print(F("Movement sensor on GPIO: "));
     Serial.println(MOVEMENT_SENSOR_PIN);
     
+    delay(1000);
+    Serial.println(F("Initializing LMIC..."));
+    
     // LMIC init
     os_init();
+    Serial.println(F("LMIC os_init() complete"));
+    
+    delay(500);
     
     // Reset the MAC state
     LMIC_reset();
+    Serial.println(F("LMIC_reset() complete"));
+    
+    delay(500);
     
     // Set the data rate to Spreading Factor 7 (default)
     LMIC_setDrTxpow(DR_SF7, 14);
+    Serial.println(F("LMIC_setDrTxpow() complete"));
+    
+    lmic_initialized = true;
     
     Serial.println(F("Setup complete. Starting join procedure..."));
+    delay(1000);
     
     // Start job to join network
     do_send(&sendjob);
 }
 
 void loop() {
+    // Only process LMIC if initialized
+    if (!lmic_initialized) {
+        delay(100);
+        return;
+    }
+    
     // Check for movement
     checkMovement();
     
@@ -210,17 +230,18 @@ void do_send(osjob_t* j) {
     // Check if there is not a current TX/RX job running
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
-    } else {
-        // Prepare upstream data transmission at the next possible time
-        // Payload: movement count (4 bytes, big-endian)
-        unsigned char mydata[4];
-        mydata[0] = (movement_count >> 24) & 0xFF;
-        mydata[1] = (movement_count >> 16) & 0xFF;
-        mydata[2] = (movement_count >> 8) & 0xFF;
-        mydata[3] = movement_count & 0xFF;
-        
-        LMIC_setTxData2(1, mydata, sizeof(mydata), 0);
-        Serial.print(F("Packet queued with movement count: "));
-        Serial.println(movement_count);
+        return;
     }
+    
+    // Prepare upstream data transmission at the next possible time
+    // Payload: movement count (4 bytes, big-endian)
+    unsigned char mydata[4];
+    mydata[0] = (movement_count >> 24) & 0xFF;
+    mydata[1] = (movement_count >> 16) & 0xFF;
+    mydata[2] = (movement_count >> 8) & 0xFF;
+    mydata[3] = movement_count & 0xFF;
+    
+    LMIC_setTxData2(1, mydata, sizeof(mydata), 0);
+    Serial.print(F("Packet queued with movement count: "));
+    Serial.println(movement_count);
 }
