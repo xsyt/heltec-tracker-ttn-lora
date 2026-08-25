@@ -7,6 +7,8 @@
  * - OTAA Join Method
  * - Display status on built-in OLED
  * - Low power optimization
+ * 
+ * Compatible with: MCCI LoRaWAN LMIC library v6.0.1+
  */
 
 #include <lmic.h>
@@ -15,6 +17,7 @@
 #include "heltec.h"
 
 // TTN Configuration - REPLACE WITH YOUR KEYS
+// Format: LSB (Least Significant Byte first)
 static const u1_t PROGMEM DEVEUI[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 static const u1_t PROGMEM APPEUI[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 static const u1_t PROGMEM APPKEY[16] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -41,7 +44,7 @@ static bool movement_detected = false;
 static unsigned long last_movement_time = 0;
 const unsigned long DEBOUNCE_TIME = 100; // 100ms debounce
 
-// TX Interval in seconds (adjust as needed)
+// TX Interval in seconds
 const unsigned long TX_INTERVAL = 60; // Send every 60 seconds
 
 // Forward declarations
@@ -54,6 +57,7 @@ void setup() {
     Serial.begin(115200);
     delay(100);
     Serial.println(F("\n\nHeltec Tracker v1.2 - TTN LoRa Movement Sensor"));
+    Serial.println(F("MCCI LMIC v6.0.1+ compatible"));
     
     // Initialize Heltec board (display, LoRa, Serial)
     Heltec.begin(true /*DisplayEnable*/, true /*LoRa Disable initially*/, true /*Serial Enable*/, true /*PABOOST Enable*/, 868E6 /*EU868 frequency*/);
@@ -68,6 +72,8 @@ void setup() {
     
     // Setup movement sensor pin
     pinMode(MOVEMENT_SENSOR_PIN, INPUT_PULLUP);
+    Serial.print(F("Movement sensor on GPIO: "));
+    Serial.println(MOVEMENT_SENSOR_PIN);
     
     // LMIC init
     os_init();
@@ -77,6 +83,8 @@ void setup() {
     
     // Set the data rate to Spreading Factor 7 (default)
     LMIC_setDrTxpow(DR_SF7, 14);
+    
+    Serial.println(F("Setup complete. Starting join procedure..."));
     
     // Start job to join network
     do_send(&sendjob);
@@ -100,7 +108,7 @@ void checkMovement() {
         last_movement_time = current_time;
         movement_count++;
         
-        Serial.print("Movement detected! Count: ");
+        Serial.print(F(">> Movement detected! Count: "));
         Serial.println(movement_count);
         
         updateDisplay("Movement!", movement_count);
@@ -163,10 +171,9 @@ void onEvent (ev_t ev) {
             break;
         case EV_JOINED:
             Serial.println(F("EV_JOINED"));
-            updateDisplay("Joined TTN!", movement_count);
-            
-            // Disable link check validation (automatically enabled during join)
+            Serial.println(F("Init Rx delay"));
             LMIC_setLinkCheckMode(0);
+            updateDisplay("Joined TTN!", movement_count);
             break;
         case EV_RFU1:
             Serial.println(F("EV_RFU1"));
@@ -185,10 +192,8 @@ void onEvent (ev_t ev) {
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
             updateDisplay("TX Complete", movement_count);
             
-            if(LMIC.txrx & TXRX_ACK) {
-                Serial.println(F("Received ack"));
-            }
-            if(LMIC.dataLen) {
+            // Check if we received data
+            if (LMIC.dataLen) {
                 Serial.print(F("Received "));
                 Serial.print(LMIC.dataLen);
                 Serial.println(F(" bytes of payload"));
@@ -204,6 +209,7 @@ void onEvent (ev_t ev) {
             Serial.println(F("EV_RESET"));
             break;
         case EV_RXCOMPLETE:
+            // Data received in ping slot
             Serial.println(F("EV_RXCOMPLETE"));
             break;
         case EV_LINK_DEAD:
@@ -211,6 +217,18 @@ void onEvent (ev_t ev) {
             break;
         case EV_LINK_ALIVE:
             Serial.println(F("EV_LINK_ALIVE"));
+            break;
+        case EV_TXSTART:
+            Serial.println(F("EV_TXSTART"));
+            break;
+        case EV_TXCANCELED:
+            Serial.println(F("EV_TXCANCELED"));
+            break;
+        case EV_RXSTART:
+            Serial.println(F("EV_RXSTART"));
+            break;
+        case EV_JOIN_TXCOMPLETE:
+            Serial.println(F("EV_JOIN_TXCOMPLETE"));
             break;
         default:
             Serial.print(F("Unknown event: "));
@@ -220,12 +238,12 @@ void onEvent (ev_t ev) {
 }
 
 void do_send(osjob_t* j) {
-    // Check if there's not a current TX/RX job running
+    // Check if there is not a current TX/RX job running
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
         // Prepare upstream data transmission at the next possible time
-        // Payload: movement count (4 bytes)
+        // Payload: movement count (4 bytes, big-endian)
         unsigned char mydata[4];
         mydata[0] = (movement_count >> 24) & 0xFF;
         mydata[1] = (movement_count >> 16) & 0xFF;
