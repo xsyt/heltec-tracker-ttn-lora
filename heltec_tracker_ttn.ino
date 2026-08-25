@@ -9,6 +9,7 @@
  * - Low power optimization
  * 
  * Compatible with: MCCI LoRaWAN LMIC library v6.0.1+
+ * Compatible with: Heltec ESP32 Dev-Boards v2.1.6+
  */
 
 #include <lmic.h>
@@ -59,11 +60,11 @@ void setup() {
     Serial.println(F("\n\nHeltec Tracker v1.2 - TTN LoRa Movement Sensor"));
     Serial.println(F("MCCI LMIC v6.0.1+ compatible"));
     
-    // Initialize Heltec board (display, LoRa, Serial)
+    // Initialize Heltec board
     Heltec.begin(true /*DisplayEnable*/, true /*LoRa Disable initially*/, true /*Serial Enable*/, true /*PABOOST Enable*/, 868E6 /*EU868 frequency*/);
     
     // Display initialization message
-    Heltec.display->clear();
+    Heltec.display->clearDisplay();
     Heltec.display->setFont(ArialMT_Plain_10);
     Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
     Heltec.display->drawString(0, 0, "TTN Tracker v1.2");
@@ -121,7 +122,7 @@ void checkMovement() {
 }
 
 void updateDisplay(const char* status, uint32_t count) {
-    Heltec.display->clear();
+    Heltec.display->clearDisplay();
     Heltec.display->setFont(ArialMT_Plain_10);
     Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
     
