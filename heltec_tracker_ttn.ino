@@ -5,8 +5,8 @@
  * - Movement detection via spring-loaded contact on GPIO 4
  * - LoRa communication with TTN Europe
  * - OTAA Join Method
- * - Display status on built-in OLED
  * - Low power optimization
+ * - Serial debug output
  * 
  * Compatible with: MCCI LoRaWAN LMIC library v6.0.1+
  * Compatible with: Heltec ESP32 Dev-Boards v2.1.6+
@@ -15,7 +15,6 @@
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
-#include "heltec.h"
 
 // TTN Configuration - REPLACE WITH YOUR KEYS
 // Format: LSB (Least Significant Byte first)
@@ -52,24 +51,13 @@ const unsigned long TX_INTERVAL = 60; // Send every 60 seconds
 void do_send(osjob_t* j);
 void onEvent(ev_t ev);
 void checkMovement();
-void updateDisplay(const char* status, uint32_t count);
+void printStatus();
 
 void setup() {
     Serial.begin(115200);
     delay(100);
     Serial.println(F("\n\nHeltec Tracker v1.2 - TTN LoRa Movement Sensor"));
     Serial.println(F("MCCI LMIC v6.0.1+ compatible"));
-    
-    // Initialize Heltec board
-    Heltec.begin(true /*DisplayEnable*/, true /*LoRa Disable initially*/, true /*Serial Enable*/, true /*PABOOST Enable*/, 868E6 /*EU868 frequency*/);
-    
-    // Display initialization message
-    Heltec.display->clearDisplay();
-    Heltec.display->setFont(ArialMT_Plain_10);
-    Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
-    Heltec.display->drawString(0, 0, "TTN Tracker v1.2");
-    Heltec.display->drawString(0, 10, "Initializing...");
-    Heltec.display->display();
     
     // Setup movement sensor pin
     pinMode(MOVEMENT_SENSOR_PIN, INPUT_PULLUP);
@@ -111,8 +99,7 @@ void checkMovement() {
         
         Serial.print(F(">> Movement detected! Count: "));
         Serial.println(movement_count);
-        
-        updateDisplay("Movement!", movement_count);
+        printStatus();
     }
     
     // Detect HIGH state (contact open)
@@ -121,32 +108,15 @@ void checkMovement() {
     }
 }
 
-void updateDisplay(const char* status, uint32_t count) {
-    Heltec.display->clearDisplay();
-    Heltec.display->setFont(ArialMT_Plain_10);
-    Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
-    
-    // Display status
-    Heltec.display->drawString(0, 0, "TTN Tracker v1.2");
-    Heltec.display->drawString(0, 10, status);
-    
-    // Display movement count
-    char countStr[32];
-    sprintf(countStr, "Movements: %lu", count);
-    Heltec.display->drawString(0, 20, countStr);
-    
-    // Display LMIC state
-    char stateStr[32];
+void printStatus() {
+    Serial.print(F("   State: "));
     if (LMIC.opmode & OP_JOINING) {
-        sprintf(stateStr, "State: Joining...");
+        Serial.println(F("Joining..."));
     } else if (LMIC.opmode & OP_JOINED) {
-        sprintf(stateStr, "State: Joined");
+        Serial.println(F("Joined"));
     } else {
-        sprintf(stateStr, "State: Not joined");
+        Serial.println(F("Not joined"));
     }
-    Heltec.display->drawString(0, 30, stateStr);
-    
-    Heltec.display->display();
 }
 
 void onEvent (ev_t ev) {
@@ -168,30 +138,25 @@ void onEvent (ev_t ev) {
             break;
         case EV_JOINING:
             Serial.println(F("EV_JOINING"));
-            updateDisplay("Joining TTN...", movement_count);
             break;
         case EV_JOINED:
             Serial.println(F("EV_JOINED"));
             Serial.println(F("Init Rx delay"));
             LMIC_setLinkCheckMode(0);
-            updateDisplay("Joined TTN!", movement_count);
             break;
         case EV_RFU1:
             Serial.println(F("EV_RFU1"));
             break;
         case EV_JOIN_FAILED:
             Serial.println(F("EV_JOIN_FAILED"));
-            updateDisplay("Join Failed!", movement_count);
             // Try again in 10 seconds
             os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(10), do_send);
             break;
         case EV_REJOIN_FAILED:
             Serial.println(F("EV_REJOIN_FAILED"));
-            updateDisplay("Rejoin Failed!", movement_count);
             break;
         case EV_TXCOMPLETE:
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
-            updateDisplay("TX Complete", movement_count);
             
             // Check if we received data
             if (LMIC.dataLen) {
@@ -254,6 +219,5 @@ void do_send(osjob_t* j) {
         LMIC_setTxData2(1, mydata, sizeof(mydata), 0);
         Serial.print(F("Packet queued with movement count: "));
         Serial.println(movement_count);
-        updateDisplay("Sending...", movement_count);
     }
 }
