@@ -42,6 +42,7 @@ static osjob_t sendjob;
 static uint32_t movement_count = 0;
 static bool movement_detected = false;
 static unsigned long last_movement_time = 0;
+static bool network_joined = false;
 const unsigned long DEBOUNCE_TIME = 100; // 100ms debounce
 
 // TX Interval in seconds
@@ -109,10 +110,8 @@ void checkMovement() {
 }
 
 void printStatus() {
-    Serial.print(F("   State: "));
-    if (LMIC.opmode & OP_JOINING) {
-        Serial.println(F("Joining..."));
-    } else if (LMIC.opmode & OP_JOINED) {
+    Serial.print(F("   Network State: "));
+    if (network_joined) {
         Serial.println(F("Joined"));
     } else {
         Serial.println(F("Not joined"));
@@ -138,10 +137,12 @@ void onEvent (ev_t ev) {
             break;
         case EV_JOINING:
             Serial.println(F("EV_JOINING"));
+            network_joined = false;
             break;
         case EV_JOINED:
             Serial.println(F("EV_JOINED"));
             Serial.println(F("Init Rx delay"));
+            network_joined = true;
             LMIC_setLinkCheckMode(0);
             break;
         case EV_RFU1:
@@ -149,11 +150,13 @@ void onEvent (ev_t ev) {
             break;
         case EV_JOIN_FAILED:
             Serial.println(F("EV_JOIN_FAILED"));
+            network_joined = false;
             // Try again in 10 seconds
             os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(10), do_send);
             break;
         case EV_REJOIN_FAILED:
             Serial.println(F("EV_REJOIN_FAILED"));
+            network_joined = false;
             break;
         case EV_TXCOMPLETE:
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
